@@ -159,14 +159,11 @@ async function invoke(userName, client) {
 
 async function installChaincode(client, chaincodeName, chaincodePath,
 	chaincodeVersion, chaincodeType, username, org_name) {
-
 	try {
 		await client.getUserContext('admin', true);
-
-		
 		// 连接peer
-		const peer = client.newPeer('grpcs://localhost:7051', {
-			'ssl-target-name-override': 'peer0.org1.example.com',
+		const peer = client.newPeer('grpcs://localhost:8051', {
+			'ssl-target-name-override': 'peer1.org1.example.com',
 			pem: fs.readFileSync(certPath, 'utf8')
 		});
 
@@ -177,10 +174,11 @@ async function installChaincode(client, chaincodeName, chaincodePath,
 			asLocalhost: true,
 			target: peer
 		});
-		const peers = client.getPeersForOrg('Org1MSP');
-		console.log(peers)
-		let cert = fs.readFileSync('/Users/cp/project/fabric/fabric-samples/basic-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/admincerts/Admin@org1.example.com-cert.pem', 'utf8');
-		let pk = fs.readFileSync('/Users/cp/project/fabric/fabric-samples/basic-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore/cd96d5260ad4757551ed4a5a991e62130f8008a0bf996e4e4b84cd097a747fec_sk', 'utf8');
+		
+		let cert = fs.readFileSync('/Users/cp/project/fabric/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/admincerts/Admin@org1.example.com-cert.pem', 'utf8');
+		var pkPath = '/Users/cp/project/fabric/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore/';
+
+		let pk = fs.readFileSync(pkPath + fs.readdirSync(pkPath), 'utf8');
 		client.setAdminSigningIdentity(pk, cert, 'Org1MSP');
 		var request = {
 			chaincodePath: chaincodePath,
@@ -190,13 +188,11 @@ async function installChaincode(client, chaincodeName, chaincodePath,
 			channelNames: 'mychannel'
 		};
 		let results = await client.installChaincode(request);
-		console.log(results);
+		console.log(results[0]);
 
 	} catch (error) {
 		console.log('********:', error)
 	}
-
-
 };
 
 function getTranscationResult(eventHub, txId) {
@@ -239,7 +235,7 @@ function getTranscationResult(eventHub, txId) {
 	} = await initClient();
 	// await enrolleAdmin(client, ca_client);
 	// await registerUser('user5', client, ca_client);
-	await invoke('user5', client);
-	// await installChaincode(client, 'mycc', chaincodePath, 'v0', 'node', 'admin');
+	// await invoke('user5', client);
+	await installChaincode(client, 'mycc', chaincodePath, 'v0', 'node', 'admin');
 
 })()
