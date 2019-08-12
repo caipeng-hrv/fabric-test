@@ -6,7 +6,7 @@ const Fabric_Client = require('fabric-client');
 const fs = require('fs');
 const path = require('path');
 const chaincodePath = 'chaincode/github.com/mycc';
-const certPath = '/Users/cp/project/fabric/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/tlsca/tlsca.org1.example.com-cert.pem';
+const certPath = './first-network/crypto-config/peerOrganizations/org1.example.com/tlsca/tlsca.org1.example.com-cert.pem';
 async function initClient() {
 	//初始化client
 	const client = new Fabric_Client();
@@ -93,7 +93,7 @@ async function registerUser(userName, client, ca_client) {
 
 	}
 };
-async function invoke(userName, client) {
+async function invoke(client,userName,chaincodeId,fcn,args) {
 	try {
 		const user = await client.getUserContext(userName, true);
 		if (!user) {
@@ -113,15 +113,23 @@ async function invoke(userName, client) {
 			target: peer
 		});
 		//2.创建交易ID
-		const tx_id = client.newTransactionID();
+		const tx_id = client.newTransactionID(true);
 		const proposal_request = {
 			targets: [peer],
-			chaincodeId: 'fabcar',
-			fcn: 'createCar',
-			args: ['CAR12', 'Honda', 'Accord', 'Black', 'Tom'],
+			chaincodeId: chaincodeId,
+			fcn: fcn,
+			args: args,
 			chainId: 'mychannel',
 			txId: tx_id
 		};
+		// const proposal_request = {
+		// 	targets: [peer],
+		// 	chaincodeId: 'mycc',
+		// 	fcn: 'delete',
+		// 	args: ['A'],
+		// 	chainId: 'mychannel',
+		// 	txId: tx_id
+		// };
 		//3.发送交易到背书节点
 		const proposalResults = await channel.sendTransactionProposal(proposal_request);
 		var responses = proposalResults[0];
@@ -146,6 +154,8 @@ async function invoke(userName, client) {
 		};
 		if (submitResult[1] && submitResult[1].event_status === 'VALID') {
 			console.log('Successfully committed the change to the ledger by the peer');
+			let rs = responses[0].response.payload.toString();
+			return rs;
 		} else {
 			throw new Error(submitResult[1].toString())
 		};
@@ -158,7 +168,7 @@ async function invoke(userName, client) {
 }
 
 async function installChaincode(client, chaincodeName, chaincodePath,
-	chaincodeVersion, chaincodeType, username, org_name) {
+	chaincodeVersion, chaincodeType) {
 	try {
 		await client.getUserContext('admin', true);
 		// 连接peer
@@ -175,11 +185,12 @@ async function installChaincode(client, chaincodeName, chaincodePath,
 			target: peer
 		});
 		
-		let cert = fs.readFileSync('/Users/cp/project/fabric/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/admincerts/Admin@org1.example.com-cert.pem', 'utf8');
-		var pkPath = '/Users/cp/project/fabric/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore/';
+		let cert = fs.readFileSync('./first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/admincerts/Admin@org1.example.com-cert.pem', 'utf8');
+		var pkPath = './first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore/';
 
 		let pk = fs.readFileSync(pkPath + fs.readdirSync(pkPath), 'utf8');
 		client.setAdminSigningIdentity(pk, cert, 'Org1MSP');
+		
 		var request = {
 			chaincodePath: chaincodePath,
 			chaincodeId: chaincodeName,
@@ -194,7 +205,49 @@ async function installChaincode(client, chaincodeName, chaincodePath,
 		console.log('********:', error)
 	}
 };
+async function instantiateChaincode(client,chaincodeName) {
+	try {
+		const user = await client.getUserContext('admin', true);
+		//连接peer
+		const peer = client.newPeer('grpcs://localhost:7051', {
+			'ssl-target-name-override': 'peer0.org1.example.com',
+			pem: fs.readFileSync(certPath, 'utf8')
+		});
+		//1.创建通道
+		const channel = client.newChannel('mychannel');
+		await channel.initialize({
+			discover: true,
+			asLocalhost: true,
+			target: peer
+		});
+		let cert = fs.readFileSync('./first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/admincerts/Admin@org1.example.com-cert.pem', 'utf8');
+		var pkPath = './first-network/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp/keystore/';
 
+		let pk = fs.readFileSync(pkPath + fs.readdirSync(pkPath), 'utf8');
+		client.setAdminSigningIdentity(pk, cert, 'Org1MSP');
+		const tx_id = client.newTransactionID(true);
+		let upgradeResponse = await channel.sendInstantiateProposal({
+		    targets: peer,
+		    chaincodeType: 'node',
+		    chaincodeId: chaincodeName,
+		    chaincodeVersion: 'v1',
+		    args: [],
+		    fcn: 'initLedger',
+		    txId: tx_id
+		});
+		var responses = upgradeResponse[0];
+		if (responses[0] &&responses[0].response&& responses[0].response.status == 200) {
+			console.log('Successfully sent Proposal and received response:Status - 200')
+		} else {
+			console.log('Failed to send Proposal and Error:', responses[0].toString())
+			return;
+		}
+
+	} catch (error) {
+		console.error(`Failed to submit transaction: ${error}`);
+		process.exit(1);
+	}
+}
 function getTranscationResult(eventHub, txId) {
 	return new Promise((resolve, reject) => {
 		let handle = setTimeout(() => {
@@ -233,9 +286,16 @@ function getTranscationResult(eventHub, txId) {
 		client,
 		ca_client
 	} = await initClient();
-	// await enrolleAdmin(client, ca_client);
-	// await registerUser('user5', client, ca_client);
-	// await invoke('user5', client);
-	await installChaincode(client, 'mycc', chaincodePath, 'v0', 'node', 'admin');
+	await enrolleAdmin(client, ca_client);
+	await registerUser('user5', client, ca_client);
+	// let result = await invoke(client,'user5','company','queryCom',['BABA']);
+	// let result = await invoke(client,'user5','company','addCom',['MSFT','微软','10,580.54']);
+	// let result = await invoke(client,'user5','company','queryAllComs',[]);
+	let result = await invoke(client,'user5','company','changeBalance',['BABA','4542.74'])
+	console.log(result)
+	// await installChaincode(client,'myCar1','chaincode/my-car','v1','node');
+	// await instantiateChaincode(client,'myCar1');
+	// await installChaincode(client, 'mycc', chaincodePath, 'v0', 'node', 'admin');
+	// await instantiateChaincode(client,'mycc');
 
 })()
